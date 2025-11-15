@@ -19,9 +19,7 @@ typedef struct{
     uint64_t prime;
     int power;
     int multipliers_num;
-}pint64_t;
-
-
+}fint64_t;
 
 uint64_t rnd_between(uint64_t x, uint64_t y);                           //simple RNG, to do it without srand() and rand
 uint64_t EEA(uint64_t a, uint64_t n, uint64_t* u, uint64_t* v);         //Extended Euclidean alg 
@@ -32,7 +30,8 @@ int8_t JCB(uint64_t a, uint64_t n);                                     //Jacobi
 static inline uint64_t ring_mul(uint64_t n1, uint64_t n2, uint64_t mod);            //actually, it`s mulmod, but i don`t like the name
 static inline uint64_t ring_pow(uint64_t base, uint64_t exponent, uint64_t mod);    //actually, it`s powmod, but i don`t like the name as well :D
 
-uint64_t* gen_primes(int n);
+uint64_t* gen_primes(int n);                                                        //prime numbers generation
+uint64_t* td_method(uint64_t number, uint64_t* primes_array, size_t array_len, int* final_count);      //trial divisions method
 
 int main(){
     srand(time(NULL));
@@ -81,7 +80,16 @@ int main(){
         if(!SS_test(some_primes[i], 10, &ctr)) mistakes++;
     }
     printf("\nMistakes made: %d", mistakes);
-    free(some_primes);
+    int max;
+    uint64_t* lets_test = td_method(479001600, some_primes, 1000, &max);
+    for(int i = 0; i < max; i++){
+        printf("\nDivisor %d is %llu", i+1, lets_test[i]);
+    }
+    int max2;
+    uint64_t* lets_test2 = td_method(6227020800, some_primes, 1000, &max2);
+    for(int i = 0; i < max2; i++){
+        printf("\nDivisor %d is %llu", i+1, lets_test2[i]);
+    }
 
     return 0;
 }
@@ -255,4 +263,33 @@ uint64_t* gen_primes(int n){
         primes = resized;
     }
     return primes;
+}
+
+//trial divisions method
+uint64_t* td_method(uint64_t number, uint64_t* primes_array, size_t array_len, int* final_count){
+    uint64_t* factors = malloc(20 * sizeof(uint64_t));
+    if(!factors){
+        return NULL;
+    }
+    int k = 0;
+    int count = 0;
+    for(int i = 0; i < array_len; i++){
+        if((number % primes_array[i]) == 0){
+            factors[k] = primes_array[i];
+            k++;
+            count++;
+            if(primes_array[i]*primes_array[i] > number) break;
+        }
+    }
+    if(count == 0){
+        free(factors);
+        return NULL;
+    }
+    uint64_t* resize = realloc(factors, count*sizeof(uint64_t));
+    if(!resize){
+        return factors;
+    }
+    *final_count = count;
+    factors = resize;
+    return factors;
 }
