@@ -5,6 +5,7 @@
 #include <math.h>
 #include <stdint.h>
 #include <limits.h>
+#include <time.h>
 
 //Realization: tests on primeness, integer factorization algorithms, "smart" function to determine best algorithm
 //and find any prime
@@ -13,6 +14,14 @@
 1.1 Solovey-Strassen test
 1.2 Miller-Rabine test
 */
+//Structure to save factorized number (<=64 bit) and powers of primes
+typedef struct{
+    uint64_t prime;
+    int power;
+    int multipliers_num;
+}pint64_t;
+
+
 
 uint64_t rnd_between(uint64_t x, uint64_t y);                           //simple RNG, to do it without srand() and rand
 uint64_t EEA(uint64_t a, uint64_t n, uint64_t* u, uint64_t* v);         //Extended Euclidean alg 
@@ -23,8 +32,10 @@ int8_t JCB(uint64_t a, uint64_t n);                                     //Jacobi
 static inline uint64_t ring_mul(uint64_t n1, uint64_t n2, uint64_t mod);            //actually, it`s mulmod, but i don`t like the name
 static inline uint64_t ring_pow(uint64_t base, uint64_t exponent, uint64_t mod);    //actually, it`s powmod, but i don`t like the name as well :D
 
+uint64_t* gen_primes(int n);
+
 int main(){
-    printf("\nLehho Dorlw!");
+    srand(time(NULL));
     printf("\nTasks: \n1. Primeness tests \n2. Factorization algs");
     printf("\nRing mul & Ring pow tests");
     uint64_t a = ring_mul(11,11,7);
@@ -55,8 +66,22 @@ int main(){
     test_number(test3_num, 200);
     test1_num = 123456789012345678;
     test_number(test1_num, 100);
-    test2_num = 987654321098765433;
+    test2_num = 2500744714570633849;
     test_number(test2_num, 100);
+    printf("\nMax value of int64_t is  %llu, 19 digits", INT64_MAX);
+    //let`s generate some primes!
+    uint64_t* some_primes = gen_primes(1000);
+    for(int i = 0; i < 1000; i++){
+        if(((i + 1) % 10) == 0 || i == 0) printf("\n");
+        printf("%6llu",some_primes[i]);
+    }
+    int mistakes = 0;
+    for(int i = 0; i < 1000; i++){
+        uint64_t ctr;
+        if(!SS_test(some_primes[i], 10, &ctr)) mistakes++;
+    }
+    printf("\nMistakes made: %d", mistakes);
+    free(some_primes);
 
     return 0;
 }
@@ -75,6 +100,7 @@ uint64_t EEA(uint64_t a, uint64_t n, uint64_t* u, uint64_t* v){
     return gcd;
 }
 
+//Solovey-Strassen test body
 bool SS_test(uint64_t p, int k, uint64_t* counter){
     int c = 0;
     if (p == 2) {
@@ -113,6 +139,7 @@ bool SS_test(uint64_t p, int k, uint64_t* counter){
     return true;
 }
 
+//direct function for testing numbers with results
 void test_number(uint64_t number, int precision){
     uint64_t k;
     bool conclusion = SS_test(number, precision, &k);
@@ -170,4 +197,62 @@ int8_t JCB(uint64_t a, uint64_t n){
         a %= n;
     }
     return (n == 1) ? (int8_t)jcb : 0;
+}
+
+//For trial divisions method it would be good to generate some number of primes. We`ll limit a generation to first 10k primes
+//using Erathosphene sieve
+uint64_t* gen_primes(int n){
+    if(n > 10000 || n <= 0){
+        printf("\nPrimes array not generated - limit exceeded");
+        return NULL;
+    }
+    //estimate the potential size of sieve to create array
+    uint64_t estimate = (uint64_t)((n * log(n)) * 1.2);
+    bool* sieve = malloc(estimate*sizeof(bool));
+    if(!sieve){
+        printf("Memory allocation error");
+        return NULL;
+    }
+    uint64_t* primes = malloc(n * sizeof(uint64_t));
+    if(!primes){
+        printf("Memory allocation error");
+        return NULL;
+    }
+    //init sieve
+    sieve[0] = false;
+    sieve[1] = false;
+    for(int i = 2; i < estimate; i++){
+        sieve[i] = true;
+    }
+    //evaluate sieve
+    uint64_t max_num = (uint64_t) sqrt(estimate);
+    for(uint64_t p = 2; p <= max_num; p++){
+        if(sieve[p]){
+            // Викреслюємо всі кратні p, починаючи з p²
+            for(uint64_t k = p * p; k < estimate; k += p){
+                sieve[k] = false;
+            }
+        }
+    }
+    //insert values into an array
+    uint64_t count = 0;
+    for(uint64_t i = 2; i < estimate && count < n; i++){
+        if(sieve[i]){
+            primes[count] = i;
+            count++;
+        }
+    }
+    free(sieve);
+    if(count < n) {
+        if(count == 0){
+            free(primes);
+            printf("\nPrimes not found!");
+        }
+    }
+    uint64_t* resized = realloc(primes, count * sizeof(uint64_t));
+
+    if(resized){
+        primes = resized;
+    }
+    return primes;
 }
