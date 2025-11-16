@@ -293,3 +293,32 @@ uint64_t* td_method(uint64_t number, uint64_t* primes_array, size_t array_len, i
     factors = resize;
     return factors;
 }
+
+uint64_t rho_f(uint64_t number, uint64_t mod){
+    return (number * number + 1) % mod;
+}
+
+uint64_t rho_g(uint64_t number, uint64_t mod){
+    return rho_f(rho_f(number, mod), mod);
+}
+
+
+uint64_t rho_factor(uint64_t number){
+    //calculate initial values (x, y, d)
+    uint64_t x_init = rnd_between(1, number);
+    uint64_t y_init = x_init;
+    uint64_t d = 1;
+    uint64_t x_next, y_next;
+    //cycle - while we can`t find at least 1 common divisor
+    uint64_t u,v;
+    int cycler = 0;
+    while(d == 1){
+        x_next = rho_f(x_init, number);
+        y_next = rho_g(y_init, number);
+        d = EEA(x_next, y_next, &u, &v);
+        (d == 1) ? cycler++ : 0;
+    }
+
+
+    return 0;
+}
