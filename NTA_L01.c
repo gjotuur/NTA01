@@ -30,8 +30,9 @@ int8_t JCB(uint64_t a, uint64_t n);                                     //Jacobi
 static inline uint64_t ring_mul(uint64_t n1, uint64_t n2, uint64_t mod);            //actually, it`s mulmod, but i don`t like the name
 static inline uint64_t ring_pow(uint64_t base, uint64_t exponent, uint64_t mod);    //actually, it`s powmod, but i don`t like the name as well :D
 
-uint64_t* gen_primes(int n);                                                        //prime numbers generation
+uint64_t* gen_primes(int n);                                                                           //prime numbers generation
 uint64_t* td_method(uint64_t number, uint64_t* primes_array, size_t array_len, int* final_count);      //trial divisions method
+uint64_t rho_factor(uint64_t number, bool method);                                                     //Pollard rho-method
 
 int main(){
     srand(time(NULL));
@@ -91,20 +92,25 @@ int main(){
         printf("\nDivisor %d is %llu", i+1, lets_test2[i]);
     }
 
+    printf("\nPollard rho-method, testing number: 1449863225586482579");
+    uint64_t test4_num =  1449863225586482579;
+    uint64_t factor = rho_factor(test4_num, true);
+    if(factor) printf("\nFound factor: %llu, test: %llu", factor, test4_num % factor);
+
     return 0;
 }
 
 //Extended EA with Bezout`s coefficients (u,v saved in memory through pointer type var`s)
 uint64_t EEA(uint64_t a, uint64_t n, uint64_t* u, uint64_t* v){
     if(n == 0){
-        *u = 1;
-        *v = 0;
+        if(u) *u = 1;
+        if(v) *v = 0;
         return a;
     }
     uint64_t u_i = 0, v_i = 0;
     uint64_t gcd = EEA(n, a%n, &u_i, &v_i);
-    *u = v_i;
-    *v = u_i - (a/n) * v_i;
+    if(u) *u = v_i;
+    if(v) *v = u_i - (a/n) * v_i;
     return gcd;
 }
 
@@ -295,30 +301,35 @@ uint64_t* td_method(uint64_t number, uint64_t* primes_array, size_t array_len, i
 }
 
 uint64_t rho_f(uint64_t number, uint64_t mod){
-    return (number * number + 1) % mod;
+    return (ring_mul(number, number, mod) + 1) % mod;
 }
 
 uint64_t rho_g(uint64_t number, uint64_t mod){
     return rho_f(rho_f(number, mod), mod);
 }
 
-
-uint64_t rho_factor(uint64_t number){
+//Pollard rho-method single factor search
+uint64_t rho_factor(uint64_t number, bool method){
+    if(number % 2 == 0) return (uint64_t) 2;
+    if(number <= 1) return 0;
     //calculate initial values (x, y, d)
-    uint64_t x_init = rnd_between(1, number);
-    uint64_t y_init = x_init;
-    uint64_t d = 1;
-    uint64_t x_next, y_next;
-    //cycle - while we can`t find at least 1 common divisor
-    uint64_t u,v;
-    int cycler = 0;
-    while(d == 1){
-        x_next = rho_f(x_init, number);
-        y_next = rho_g(y_init, number);
-        d = EEA(x_next, y_next, &u, &v);
-        (d == 1) ? cycler++ : 0;
+    for(int shot = 0; shot < 5; shot++){
+        uint64_t x_init = (method) ? rnd_between(2, number - 1) : 2;
+        uint64_t y_init = x_init;
+        uint64_t d = 1;
+        uint64_t x_next, y_next;
+        int cycler = 0;
+        while(d == 1 && cycler < 10000000){
+            cycler++;
+            x_next = rho_f(x_init, number);
+            y_next = rho_g(y_init, number);
+            uint64_t check_val = (x_next > y_next) ? (x_next - y_next) : (y_next - x_next);
+            d = EEA(check_val, number, NULL, NULL);
+            x_init = x_next;
+            y_init = y_next;
+            if (d == number) break;
+            if (d > 1) return d;
+        }
     }
-
-
     return 0;
 }
