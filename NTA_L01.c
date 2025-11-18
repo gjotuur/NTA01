@@ -30,9 +30,17 @@ int8_t JCB(uint64_t a, uint64_t n);                                     //Jacobi
 static inline uint64_t ring_mul(uint64_t n1, uint64_t n2, uint64_t mod);            //actually, it`s mulmod, but i don`t like the name
 static inline uint64_t ring_pow(uint64_t base, uint64_t exponent, uint64_t mod);    //actually, it`s powmod, but i don`t like the name as well :D
 
-uint64_t* gen_primes(int n);                                                                           //prime numbers generation
+//trial divisions
+uint64_t* gen_primes(uint64_t n);                                                                           //prime numbers generation
 uint64_t* td_method(uint64_t number, uint64_t* primes_array, size_t array_len, int* final_count);      //trial divisions method
+
+//Rho-method
+uint64_t rho_f(uint64_t number, uint64_t mod);                                                         //Internal function to find x_i, could be undeclared as prototype
+uint64_t rho_g(uint64_t number, uint64_t mod);                                                         //internal function to find y_i, could be undeclared as prototype
 uint64_t rho_factor(uint64_t number, bool method);                                                     //Pollard rho-method
+
+//Brillhart - Morrison method
+uint64_t* bm_factorbase(uint64_t number, uint64_t* count);               //factor-base generation
 
 int main(){
     srand(time(NULL));
@@ -96,6 +104,14 @@ int main(){
     uint64_t test4_num =  1449863225586482579;
     uint64_t factor = rho_factor(test4_num, true);
     if(factor) printf("\nFound factor: %llu, test: %llu", factor, test4_num % factor);
+    printf("\nBrillhart-Morrison method: factor-base\n");
+    uint64_t fb_count;
+    uint64_t* fb = bm_factorbase(test4_num, &fb_count);
+    for(uint64_t i = 0; i < fb_count; i++){
+        printf("%10llu  ", fb[i]);
+        (i == 9 || (i+1)%10 == 0) ? printf("\n") : 0;
+    }
+    printf("\nFactor base size is %llu", fb_count);
 
     return 0;
 }
@@ -215,8 +231,8 @@ int8_t JCB(uint64_t a, uint64_t n){
 
 //For trial divisions method it would be good to generate some number of primes. We`ll limit a generation to first 10k primes
 //using Erathosphene sieve
-uint64_t* gen_primes(int n){
-    if(n > 10000 || n <= 0){
+uint64_t* gen_primes(uint64_t n){
+    if(n > 1000000 || n <= 0){
         printf("\nPrimes array not generated - limit exceeded");
         return NULL;
     }
@@ -332,4 +348,34 @@ uint64_t rho_factor(uint64_t number, bool method){
         }
     }
     return 0;
+}
+
+///Brillhart-Morrison method (CFRAC) and its friends
+uint64_t* bm_factorbase(uint64_t number, uint64_t* count){
+    long double L = expl(pow(log(number)*log(log(number)), 0.5));
+    long double a = 1/sqrtl(2);
+    long double L_a = powl(L, a);
+    uint64_t prime_gen_lim = (uint64_t) ((L_a / (long double)log(L_a)) * 1.2);
+    uint64_t* starting_base = gen_primes(prime_gen_lim);
+    uint64_t* bm_base = malloc(prime_gen_lim * sizeof(uint64_t));
+    if(!bm_base){
+        //allocation error
+        return NULL;
+    }
+    bm_base[0] = 2;
+    uint64_t bm_count = 1;
+    for(int i = 0; i < prime_gen_lim; i++){
+        if(JCB(number, starting_base[i]) == 1 && starting_base[i] <= (uint64_t)L_a){
+            bm_base[bm_count] = starting_base[i];
+            bm_count++;
+        }
+    }
+    free(starting_base);
+    uint64_t* resized = realloc(bm_base, bm_count * sizeof(uint64_t));
+    if(!resized){
+        return bm_base;
+    }
+    bm_base = resized;
+    if(count) *count = bm_count;
+    return bm_base;
 }
