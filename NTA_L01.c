@@ -15,16 +15,26 @@
 1.2 Miller-Rabine test
 */
 //Structure to save factorized number (<=64 bit) and powers of primes, max size of array of those struct is ~50 (<2^64-1)
-typedef struct{
+typedef struct {
     uint64_t prime;
-    int power;
-}fint64_t;
+    uint32_t power;
+} PrimeFactor;
+
+typedef struct {
+    PrimeFactor* factors;
+    uint32_t count;
+    uint32_t capacity;
+} Factorization;
 
 uint64_t rnd_between(uint64_t x, uint64_t y);                           //simple RNG, to do it without srand() and rand
 uint64_t EEA(uint64_t a, uint64_t n, uint64_t* u, uint64_t* v);         //Extended Euclidean alg 
 bool SS_test(uint64_t p, int k, uint64_t* counter);                     //Solovey-Strassen test
 void test_number(uint64_t number, int precision);                       //Test with consol message
 int8_t JCB(uint64_t a, uint64_t n);                                     //Jacobi symbol calculation
+
+void factorization_init(Factorization* f);                                  //Init factorized numbah struct
+void factorization_free(Factorization* f);                                  //Free factorized numbah struct
+void factorization_add(Factorization* f, uint64_t prime, uint32_t power);   //Add new factor
 
 static inline uint64_t ring_mul(uint64_t n1, uint64_t n2, uint64_t mod);            //actually, it`s mulmod, but i don`t like the name
 static inline uint64_t ring_pow(uint64_t base, uint64_t exponent, uint64_t mod);    //actually, it`s powmod, but i don`t like the name as well :D
@@ -431,4 +441,29 @@ uint64_t* bm_cfrac(uint64_t number, uint64_t* b_size){
     }
     *b_size = found;
     return b;
+}
+
+//Initialize struct for factorized numbah
+void factorization_init(Factorization* f) {
+    f->capacity = 20;
+    f->count = 0;
+    f->factors = malloc(f->capacity * sizeof(PrimeFactor));
+}
+
+//Free struct for factorized numbah
+void factorization_free(Factorization* f) {
+    free(f->factors);
+    f->factors = NULL;
+    f->count = 0;
+}
+
+//Add new factor to struct
+void factorization_add(Factorization* f, uint64_t prime, uint32_t power) {
+    if (f->count >= f->capacity) {
+        f->capacity *= 2;
+        f->factors = realloc(f->factors, f->capacity * sizeof(PrimeFactor));
+    }
+    f->factors[f->count].prime = prime;
+    f->factors[f->count].power = power;
+    f->count++;
 }
