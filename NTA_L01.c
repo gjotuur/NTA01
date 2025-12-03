@@ -14,11 +14,10 @@
 1.1 Solovey-Strassen test
 1.2 Miller-Rabine test
 */
-//Structure to save factorized number (<=64 bit) and powers of primes
+//Structure to save factorized number (<=64 bit) and powers of primes, max size of array of those struct is ~50 (<2^64-1)
 typedef struct{
     uint64_t prime;
     int power;
-    int multipliers_num;
 }fint64_t;
 
 uint64_t rnd_between(uint64_t x, uint64_t y);                           //simple RNG, to do it without srand() and rand
@@ -31,7 +30,7 @@ static inline uint64_t ring_mul(uint64_t n1, uint64_t n2, uint64_t mod);        
 static inline uint64_t ring_pow(uint64_t base, uint64_t exponent, uint64_t mod);    //actually, it`s powmod, but i don`t like the name as well :D
 
 //trial divisions
-uint64_t* gen_primes(uint64_t n);                                                                           //prime numbers generation
+uint64_t* gen_primes(uint64_t n);                                                                      //prime numbers generation
 uint64_t* td_method(uint64_t number, uint64_t* primes_array, size_t array_len, int* final_count);      //trial divisions method
 
 //Rho-method
@@ -41,6 +40,7 @@ uint64_t rho_factor(uint64_t number, bool method);                              
 
 //Brillhart - Morrison method
 uint64_t* bm_factorbase(uint64_t number, uint64_t* count);               //factor-base generation
+uint64_t* bm_cfrac(uint64_t number, uint64_t* b_size);                   //Chain fractions B-smooth array generation
 
 int main(){
     srand(time(NULL));
@@ -112,6 +112,12 @@ int main(){
         (i == 9 || (i+1)%10 == 0) ? printf("\n") : 0;
     }
     printf("\nFactor base size is %llu", fb_count);
+    /*uint64_t b_size;
+    uint64_t* b_base = bm_cfrac(test4_num, &b_size);
+    for(uint64_t i = 0; i < b_size; i++){
+        printf("%10llu   ", b_base[i]);
+        (i == 9 || (i+1)%10 == 0) ? printf("\n") : 0;    
+    }*/
 
     return 0;
 }
@@ -351,6 +357,8 @@ uint64_t rho_factor(uint64_t number, bool method){
 }
 
 ///Brillhart-Morrison method (CFRAC) and its friends
+
+//factor-base generation
 uint64_t* bm_factorbase(uint64_t number, uint64_t* count){
     long double L = expl(pow(log(number)*log(log(number)), 0.5));
     long double a = 1/sqrtl(2);
@@ -378,4 +386,49 @@ uint64_t* bm_factorbase(uint64_t number, uint64_t* count){
     bm_base = resized;
     if(count) *count = bm_count;
     return bm_base;
+}
+
+//BM B-smoothness
+bool bm_smoothness(uint64_t x, const uint64_t* factorbase, const uint64_t fb_size){
+    for(uint64_t i = 0; i < fb_size; i++){
+        uint64_t p = factorbase[i];
+        while(x % p == 0){
+            x /= p;
+        }
+        if(x == 1) return true;
+    }
+    return (x == 1) ? true : false;
+}
+
+//BM method chain fractions. FUCK. THIS. SHIT.
+uint64_t* bm_cfrac(uint64_t number, uint64_t* b_size){
+    uint64_t fb_size;
+    uint64_t* factorbase = bm_factorbase(number, &fb_size);
+    uint64_t a_0 = (uint64_t)floorl(sqrtl(number));
+    uint64_t u_init = a_0;
+    uint64_t v_init = 1;
+    uint64_t* b = malloc((fb_size + 1) * sizeof(uint64_t));
+    if(!b) return NULL;
+    uint64_t a_init = a_0;
+    b[0] = 0;
+    b[1] = 1;
+    __int128_t v_next, u_next;
+    uint64_t a_next;
+    uint64_t found = 2;
+    while(found < fb_size + 1){
+        v_next = ((__int128_t)number - (__int128_t)u_init * (__int128_t)u_init) / v_init;
+        a_next = (uint64_t)((uint64_t)sqrtl(number) + u_init) / v_next;
+        u_next = a_next * v_next - u_init;
+        u_init = u_next;
+        v_init = v_next;
+        a_init = a_next;
+        uint64_t b_i = a_next * b[found - 1] + b[found - 2];
+        uint64_t curr = ring_pow(b_i, 2, number);
+        if(bm_smoothness(curr, factorbase, fb_size)){
+            found++;
+            b[found] = curr;
+        }
+    }
+    *b_size = found;
+    return b;
 }
