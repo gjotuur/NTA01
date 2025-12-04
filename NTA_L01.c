@@ -26,6 +26,13 @@ typedef struct {
     uint32_t capacity;
 } Factorization;
 
+// Структура для зберігання B-smooth чисел
+typedef struct {
+    uint64_t P_i;        // Чисельник конвергента
+    uint64_t Q_i;        // Знаменник (значення, що перевіряється на гладкість)
+    Factorization fact;  // Факторизація Q_i
+} BSmooth;
+
 uint64_t rnd_between(uint64_t x, uint64_t y);                           //simple RNG, to do it without srand() and rand
 uint64_t EEA(uint64_t a, uint64_t n, uint64_t* u, uint64_t* v);         //Extended Euclidean alg 
 bool SS_test(uint64_t p, int k, uint64_t* counter);                     //Solovey-Strassen test
@@ -35,6 +42,9 @@ int8_t JCB(uint64_t a, uint64_t n);                                     //Jacobi
 void factorization_init(Factorization* f);                                  //Init factorized numbah struct
 void factorization_free(Factorization* f);                                  //Free factorized numbah struct
 void factorization_add(Factorization* f, uint64_t prime, uint32_t power);   //Add new factor
+bool factorize_with_base(uint64_t x, const uint64_t* factorbase, uint64_t fb_size, Factorization* result); //For cfrac
+void print_factorization(const Factorization* f);                           //Let it be
+
 
 static inline uint64_t ring_mul(uint64_t n1, uint64_t n2, uint64_t mod);            //actually, it`s mulmod, but i don`t like the name
 static inline uint64_t ring_pow(uint64_t base, uint64_t exponent, uint64_t mod);    //actually, it`s powmod, but i don`t like the name as well :D
@@ -49,8 +59,8 @@ uint64_t rho_g(uint64_t number, uint64_t mod);                                  
 uint64_t rho_factor(uint64_t number, bool method);                                                     //Pollard rho-method
 
 //Brillhart - Morrison method
-uint64_t* bm_factorbase(uint64_t number, uint64_t* count);               //factor-base generation
-uint64_t* bm_cfrac(uint64_t number, uint64_t* b_size);                   //Chain fractions B-smooth array generation
+uint64_t* bm_factorbase(uint64_t number, uint64_t* count);                                                             //factor-base generation
+BSmooth* bm_cfrac(uint64_t N, uint64_t* smooth_count, const uint64_t* factorbase, uint64_t fb_size);                   //Chain fractions B-smooth array generation
 
 int main(){
     srand(time(NULL));
@@ -122,12 +132,18 @@ int main(){
         (i == 9 || (i+1)%10 == 0) ? printf("\n") : 0;
     }
     printf("\nFactor base size is %llu", fb_count);
-    /*uint64_t b_size;
-    uint64_t* b_base = bm_cfrac(test4_num, &b_size);
-    for(uint64_t i = 0; i < b_size; i++){
-        printf("%10llu   ", b_base[i]);
-        (i == 9 || (i+1)%10 == 0) ? printf("\n") : 0;    
-    }*/
+
+    uint64_t smooth_c;
+    BSmooth* smooth = bm_cfrac(test4_num, &smooth_c, fb, fb_count);
+
+    if(smooth && smooth_c > 0){
+        printf("Found some");
+        for(uint64_t i = 0; i < smooth_c; i++){
+            printf("%2llu. Q_%llu = %llu =", i+1, i, smooth[i].Q_i);
+            print_factorization(&smooth[i].fact);
+            printf("\n");
+        }
+    }
 
     return 0;
 }
@@ -368,32 +384,76 @@ uint64_t rho_factor(uint64_t number, bool method){
 
 ///Brillhart-Morrison method (CFRAC) and its friends
 
+bool factorize_with_base(uint64_t x, const uint64_t* factorbase, uint64_t fb_size, Factorization* result) {
+    factorization_init(result);
+    uint64_t remaining = x;
+    
+    for(uint64_t i = 0; i < fb_size; i++) {
+        uint64_t p = factorbase[i];
+        uint32_t power = 0;
+        
+        while(remaining % p == 0) {
+            remaining /= p;
+            power++;
+        }
+        
+        if(power > 0) {
+            factorization_add(result, p, power);
+        }
+        
+        if(remaining == 1) return true;
+    }
+    
+    // Якщо remaining != 1, число не є B-smooth
+    if(remaining != 1) {
+        factorization_free(result);
+        return false;
+    }
+    
+    return true;
+}
+
 //factor-base generation
-uint64_t* bm_factorbase(uint64_t number, uint64_t* count){
-    long double L = expl(pow(log(number)*log(log(number)), 0.5));
-    long double a = 1/sqrtl(2);
+uint64_t* bm_factorbase(uint64_t number, uint64_t* count) {
+    long double L = expl(sqrtl(logl(number) * logl(logl(number))));
+    long double a = 1.0L / sqrtl(2.0L);
     long double L_a = powl(L, a);
-    uint64_t prime_gen_lim = (uint64_t) ((L_a / (long double)log(L_a)) * 1.2);
+    uint64_t prime_gen_lim = (uint64_t)((L_a / logl(L_a)) * 1.2);
+    
+    if(prime_gen_lim < 100) prime_gen_lim = 100;
+    if(prime_gen_lim > 10000) prime_gen_lim = 10000;
+    
     uint64_t* starting_base = gen_primes(prime_gen_lim);
+    if(!starting_base) return NULL;
+    
     uint64_t* bm_base = malloc(prime_gen_lim * sizeof(uint64_t));
-    if(!bm_base){
-        //allocation error
+    if(!bm_base) {
+        free(starting_base);
         return NULL;
     }
-    bm_base[0] = 2;
+    
+    // -1 завжди в базі (для від'ємних Q_i)
+    bm_base[0] = UINT64_MAX; // Спеціальне значення для -1
     uint64_t bm_count = 1;
-    for(int i = 0; i < prime_gen_lim; i++){
-        if(JCB(number, starting_base[i]) == 1 && starting_base[i] <= (uint64_t)L_a){
-            bm_base[bm_count] = starting_base[i];
-            bm_count++;
+    
+    // 2 завжди в базі
+    bm_base[bm_count++] = 2;
+    
+    // Додаємо прості p, де (N/p) = 1 (символ Лежандра/Якобі)
+    for(uint64_t i = 1; i < prime_gen_lim; i++) {
+        uint64_t p = starting_base[i];
+        if(p > (uint64_t)L_a) break;
+        
+        if(JCB(number, p) == 1) {
+            bm_base[bm_count++] = p;
         }
     }
+    
     free(starting_base);
+    
     uint64_t* resized = realloc(bm_base, bm_count * sizeof(uint64_t));
-    if(!resized){
-        return bm_base;
-    }
-    bm_base = resized;
+    if(resized) bm_base = resized;
+    
     if(count) *count = bm_count;
     return bm_base;
 }
@@ -411,36 +471,81 @@ bool bm_smoothness(uint64_t x, const uint64_t* factorbase, const uint64_t fb_siz
 }
 
 //BM method chain fractions. FUCK. THIS. SHIT.
-uint64_t* bm_cfrac(uint64_t number, uint64_t* b_size){
-    uint64_t fb_size;
-    uint64_t* factorbase = bm_factorbase(number, &fb_size);
-    uint64_t a_0 = (uint64_t)floorl(sqrtl(number));
-    uint64_t u_init = a_0;
-    uint64_t v_init = 1;
-    uint64_t* b = malloc((fb_size + 1) * sizeof(uint64_t));
-    if(!b) return NULL;
-    uint64_t a_init = a_0;
-    b[0] = 0;
-    b[1] = 1;
-    __int128_t v_next, u_next;
-    uint64_t a_next;
-    uint64_t found = 2;
-    while(found < fb_size + 1){
-        v_next = ((__int128_t)number - (__int128_t)u_init * (__int128_t)u_init) / v_init;
-        a_next = (uint64_t)((uint64_t)sqrtl(number) + u_init) / v_next;
-        u_next = a_next * v_next - u_init;
-        u_init = u_next;
-        v_init = v_next;
-        a_init = a_next;
-        uint64_t b_i = a_next * b[found - 1] + b[found - 2];
-        uint64_t curr = ring_pow(b_i, 2, number);
-        if(bm_smoothness(curr, factorbase, fb_size)){
+BSmooth* bm_cfrac(uint64_t N, uint64_t* smooth_count, const uint64_t* factorbase, uint64_t fb_size) {
+    printf("\n=== CFRAC Algorithm ===\n");
+    printf("N = %llu\n", N);
+    printf("Factor base size: %llu\n", fb_size);
+    
+    // Ініціалізація
+    uint64_t sqrt_N = (uint64_t)sqrtl((long double)N);
+    
+    // P_0 = sqrt(N), Q_0 = 1, Q_1 = N - P_0²
+    uint64_t P_prev = sqrt_N;
+    uint64_t Q_prev = 1;
+    uint64_t Q_curr = N - P_prev * P_prev;
+    
+    // Конвергенти: A_{-1} = 1, A_0 = P_0
+    uint64_t A_prev2 = 1;
+    uint64_t A_prev1 = sqrt_N;
+    uint64_t A_curr;
+    
+    // Масив для B-smooth чисел
+    uint64_t capacity = fb_size + 10;
+    BSmooth* smooth_numbers = malloc(capacity * sizeof(BSmooth));
+    if(!smooth_numbers) return NULL;
+    
+    uint64_t found = 0;
+    uint64_t iterations = 0;
+    uint64_t max_iterations = 100000; // Захист від зациклення
+    
+    printf("\nSearching for B-smooth numbers...\n");
+    
+    while(found < fb_size + 1 && iterations < max_iterations) {
+        iterations++;
+        
+        uint64_t a_i = (sqrt_N + P_prev) / Q_curr;                  // a_i = floor((sqrt(N) + P_i) / Q_i)
+        uint64_t P_curr = a_i * Q_curr - P_prev;                    // P_{i+1} = a_i * Q_i - P_i
+        uint64_t Q_next = Q_prev + a_i * (P_prev - P_curr);         // Q_{i+1} = Q_{i-1} + a_i * (P_i - P_{i+1})
+
+        A_curr = ring_mul(a_i, A_prev1, N) + A_prev2;               // A_i = a_i * A_{i-1} + A_{i-2}
+        if(A_curr >= N) A_curr %= N;
+        
+        Factorization fact;
+        bool is_smooth = factorize_with_base(Q_curr, factorbase, fb_size, &fact);
+        
+        if(is_smooth) {
+            printf("  [%llu] Found: P=%llu, Q=%llu, A=%llu\n", found + 1, P_prev, Q_curr, A_prev1);
+            
+            smooth_numbers[found].P_i = P_prev;
+            smooth_numbers[found].Q_i = Q_curr;
+            smooth_numbers[found].fact = fact;
             found++;
-            b[found] = curr;
+            
+            if(found >= capacity) {
+                capacity *= 2;
+                BSmooth* tmp = realloc(smooth_numbers, capacity * sizeof(BSmooth));
+                if(!tmp) break;
+                smooth_numbers = tmp;
+            }
+        }
+        
+        // Оновлюємо для наступної ітерації
+        Q_prev = Q_curr;
+        Q_curr = Q_next;
+        P_prev = P_curr;
+        A_prev2 = A_prev1;
+        A_prev1 = A_curr;
+        
+        // Показуємо прогрес
+        if(iterations % 1000 == 0) {
+            printf("  Iterations: %llu, found: %llu/%llu\n", iterations, found, fb_size + 1);
         }
     }
-    *b_size = found;
-    return b;
+    
+    printf("\nCFRAC completed: %llu B-smooth numbers found in %llu iterations\n", found, iterations);
+    
+    if(smooth_count) *smooth_count = found;
+    return smooth_numbers;
 }
 
 //Initialize struct for factorized numbah
@@ -466,4 +571,14 @@ void factorization_add(Factorization* f, uint64_t prime, uint32_t power) {
     f->factors[f->count].prime = prime;
     f->factors[f->count].power = power;
     f->count++;
+}
+
+void print_factorization(const Factorization* f) {
+    for(uint32_t i = 0; i < f->count; i++) {
+        if(i > 0) printf(" x ");
+        printf("%llu", f->factors[i].prime);
+        if(f->factors[i].power > 1) {
+            printf("^%u", f->factors[i].power);
+        }
+    }
 }
