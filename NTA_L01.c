@@ -28,9 +28,9 @@ typedef struct {
 
 // Структура для зберігання B-smooth чисел
 typedef struct {
-    uint64_t P_i;        // Чисельник конвергента
-    uint64_t Q_i;        // Знаменник (значення, що перевіряється на гладкість)
-    Factorization fact;  // Факторизація Q_i
+    uint64_t P_i;       
+    uint64_t Q_i;
+    Factorization fact;
 } BSmooth;
 
 uint64_t rnd_between(uint64_t x, uint64_t y);                           //simple RNG, to do it without srand() and rand
@@ -61,6 +61,7 @@ uint64_t rho_factor(uint64_t number, bool method);                              
 //Brillhart - Morrison method
 uint64_t* bm_factorbase(uint64_t number, uint64_t* count);                                                             //factor-base generation
 BSmooth* bm_cfrac(uint64_t N, uint64_t* smooth_count, const uint64_t* factorbase, uint64_t fb_size);                   //Chain fractions B-smooth array generation
+uint8_t** bm_matrix(BSmooth* smooths, uint64_t smooths_count, const uint64_t* factorbase, uint64_t fb_size);           //Matrix generation
 
 int main(){
     srand(time(NULL));
@@ -582,3 +583,29 @@ void print_factorization(const Factorization* f) {
         }
     }
 }
+
+uint8_t** bm_matrix(BSmooth* smooths, uint64_t smooths_count, const uint64_t* factorbase, uint64_t fb_size){
+    uint8_t** M = malloc(smooths_count*sizeof(uint8_t));
+    if(!M){
+        return NULL;
+    }
+    for(uint64_t i = 0; i < smooths_count; i++){
+        M[i] = calloc(fb_size, sizeof(uint8_t));
+        if(!M[i]) return NULL;
+
+        Factorization* f = &smooths[i].fact;
+        for(uint32_t k = 0; k < f->count; k++){
+            uint64_t p = f->factors[k].prime;
+            uint32_t pow = f->factors->power;
+
+            for(uint64_t j = 0; j < fb_size; j++){
+                if(factorbase[j] == p){
+                    M[i][j] = (pow & 1);
+                    break;
+                }
+            }
+        }
+    }
+    return M;
+}
+
