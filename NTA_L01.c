@@ -128,12 +128,20 @@ int main(){
     for(int i = 0; i < max2; i++){
         printf("\nDivisor %d is %llu", i+1, lets_test2[i]);
     }
-
     printf("\nPollard rho-method, testing number: 1449863225586482579");
-    uint64_t test4_num =  1449863225586482579;
-    uint64_t factor = rho_factor(test4_num, true);
-    if(factor) printf("\nFound factor: %llu, test: %llu", factor, test4_num % factor);
-    printf("\nBrillhart-Morrison method: factor-base\n");
+    uint64_t test4_num =  1495056764861639599;
+    //uint64_t factor = rho_factor(test4_num, true);
+    //if(factor) printf("\nFound factor: %llu, test: %llu", factor, test4_num % factor);
+
+    uint64_t res = test4_num;
+    for(int i = 0; i < 3; i++){
+        uint64_t factor = rho_factor(res, true);
+        printf("\n%4llu", factor);
+        res /= factor;
+    }
+    printf("\n%llu", res);
+
+    /*printf("\nBrillhart-Morrison method: factor-base\n");
     uint64_t fb_count;
     uint64_t* fb = bm_factorbase(test4_num, &fb_count);
     for(uint64_t i = 0; i < fb_count; i++){
@@ -155,7 +163,7 @@ int main(){
     }
     printf("\nfb_size = %llu,\nb_smooths = %llu", fb_count, smooth_c);
     
-    return 0;
+    return 0;*/
 }
 
 //Extended EA with Bezout`s coefficients (u,v saved in memory through pointer type var`s)
