@@ -20,18 +20,25 @@ typedef struct {
     uint32_t power;
 } PrimeFactor;
 
+//Struct to save number in its canonical expansion
 typedef struct {
     PrimeFactor* factors;
     uint32_t count;
     uint32_t capacity;
 } Factorization;
 
-// Структура для зберігання B-smooth чисел
+//Struct to save Bismuth
 typedef struct {
     uint64_t P_i;       
     uint64_t Q_i;
     Factorization fact;
 } BSmooth;
+
+//Struct for Gaussian elimination solutions
+typedef struct {
+    uint8_t* solution;  //usefull bits from equation
+    uint64_t size;
+} LinearDependency;
 
 uint64_t rnd_between(uint64_t x, uint64_t y);                           //simple RNG, to do it without srand() and rand
 uint64_t EEA(uint64_t a, uint64_t n, uint64_t* u, uint64_t* v);         //Extended Euclidean alg 
@@ -56,12 +63,13 @@ uint64_t* td_method(uint64_t number, uint64_t* primes_array, size_t array_len, i
 //Rho-method
 uint64_t rho_f(uint64_t number, uint64_t mod);                                                         //Internal function to find x_i, could be undeclared as prototype
 uint64_t rho_g(uint64_t number, uint64_t mod);                                                         //internal function to find y_i, could be undeclared as prototype
-uint64_t rho_factor(uint64_t number, bool method);                                                     //Pollard rho-method
+uint64_t rho_factor(uint64_t number, bool method);                                                     //Pollard rho-method (1 factor)
 
 //Brillhart - Morrison method
 uint64_t* bm_factorbase(uint64_t number, uint64_t* count);                                                             //factor-base generation
 BSmooth* bm_cfrac(uint64_t N, uint64_t* smooth_count, const uint64_t* factorbase, uint64_t fb_size);                   //Chain fractions B-smooth array generation
 uint8_t** bm_matrix(BSmooth* smooths, uint64_t smooths_count, const uint64_t* factorbase, uint64_t fb_size);           //Matrix generation
+int bm_solvesys(uint8_t** M, int rows, int cols, uint8_t* solution);                                                    //Solve system with known matrix
 
 int main(){
     srand(time(NULL));
@@ -145,7 +153,8 @@ int main(){
             printf("\n");
         }
     }
-
+    printf("\nfb_size = %llu,\nb_smooths = %llu", fb_count, smooth_c);
+    
     return 0;
 }
 
@@ -433,14 +442,11 @@ uint64_t* bm_factorbase(uint64_t number, uint64_t* count) {
         return NULL;
     }
     
-    // -1 завжди в базі (для від'ємних Q_i)
-    bm_base[0] = UINT64_MAX; // Спеціальне значення для -1
+    bm_base[0] = UINT64_MAX;
     uint64_t bm_count = 1;
     
-    // 2 завжди в базі
     bm_base[bm_count++] = 2;
     
-    // Додаємо прості p, де (N/p) = 1 (символ Лежандра/Якобі)
     for(uint64_t i = 1; i < prime_gen_lim; i++) {
         uint64_t p = starting_base[i];
         if(p > (uint64_t)L_a) break;
@@ -584,8 +590,9 @@ void print_factorization(const Factorization* f) {
     }
 }
 
+//build a matrix to solve system
 uint8_t** bm_matrix(BSmooth* smooths, uint64_t smooths_count, const uint64_t* factorbase, uint64_t fb_size){
-    uint8_t** M = malloc(smooths_count*sizeof(uint8_t));
+    uint8_t** M = malloc(smooths_count*sizeof(uint8_t*));
     if(!M){
         return NULL;
     }
@@ -596,7 +603,7 @@ uint8_t** bm_matrix(BSmooth* smooths, uint64_t smooths_count, const uint64_t* fa
         Factorization* f = &smooths[i].fact;
         for(uint32_t k = 0; k < f->count; k++){
             uint64_t p = f->factors[k].prime;
-            uint32_t pow = f->factors->power;
+            uint32_t pow = f->factors[k].power;
 
             for(uint64_t j = 0; j < fb_size; j++){
                 if(factorbase[j] == p){
@@ -609,3 +616,52 @@ uint8_t** bm_matrix(BSmooth* smooths, uint64_t smooths_count, const uint64_t* fa
     return M;
 }
 
+int bm_solvesys(uint8_t** M, int rows, int cols, uint8_t* solution) {
+    int r = 0;
+    for (int c = 0; c < cols && r < rows; c++) {
+        int pivot = -1;
+        for (int i = r; i < rows; i++) {
+            if (M[i][c]) {
+                pivot = i;
+                break;
+            }
+        }
+        if (pivot == -1)
+            continue;
+        // swap
+        if (pivot != r) {
+            uint8_t* tmp = M[pivot];
+            M[pivot] = M[r];
+            M[r] = tmp;
+        }
+        // eliminate
+        for (int i = 0; i < rows; i++) {
+            if (i != r && M[i][c]) {
+                for (int j = c; j < cols; j++) {
+                    M[i][j] ^= M[r][j];
+                }
+            }
+        }
+        r++;
+    }
+    for (int i = 0; i < cols; i++) solution[i] = 0;
+
+    for (int i = rows - 1; i >= 0; i--) {
+        int leading = -1;
+        for (int j = 0; j < cols; j++) {
+            if (M[i][j]) {
+                leading = j;
+                break;
+            }
+        }
+        if (leading == -1) continue;
+
+        uint8_t val = 0;
+        for (int j = leading + 1; j < cols; j++)
+            val ^= (M[i][j] & solution[j]);
+
+        solution[leading] = val;
+    }
+
+    return 1;
+}
